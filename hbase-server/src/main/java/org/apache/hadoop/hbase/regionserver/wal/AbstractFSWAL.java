@@ -630,8 +630,12 @@ public abstract class AbstractFSWAL<W extends WriterBase> implements WAL {
    * retrieve the next path to use for writing. Increments the internal filenum.
    */
   private Path getNewPath() throws IOException {
-    this.filenum.set(Math.max(getFilenum() + 1, EnvironmentEdgeManager.currentTime()));
+    this.filenum.set(EnvironmentEdgeManager.currentTime());
     Path newPath = getCurrentFileName();
+    while (fs.exists(newPath)) {
+      this.filenum.incrementAndGet();
+      newPath = getCurrentFileName();
+    }
     return newPath;
   }
 
