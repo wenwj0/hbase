@@ -17,13 +17,9 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.context.Scope;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.LocalHBaseCluster;
-import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.hadoop.hbase.util.ServerCommandLine;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
@@ -51,8 +47,7 @@ public class HRegionServerCommandLine extends ServerCommandLine {
 
   private int start() throws Exception {
     Configuration conf = getConf();
-    final Span span = TraceUtil.createSpan("HRegionServerCommandLine.start");
-    try (Scope ignored = span.makeCurrent()) {
+    try {
       // If 'local', don't start a region server here. Defer to
       // LocalHBaseCluster. It manages 'local' clusters.
       if (LocalHBaseCluster.isLocal(conf)) {
@@ -67,13 +62,9 @@ public class HRegionServerCommandLine extends ServerCommandLine {
           throw new RuntimeException("HRegionServer Aborted");
         }
       }
-      span.setStatus(StatusCode.OK);
     } catch (Throwable t) {
-      TraceUtil.setError(span, t);
       LOG.error("Region server exiting", t);
       return 1;
-    } finally {
-      span.end();
     }
     return 0;
   }

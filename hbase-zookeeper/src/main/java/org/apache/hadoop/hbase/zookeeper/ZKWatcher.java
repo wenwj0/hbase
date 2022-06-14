@@ -34,7 +34,6 @@ import org.apache.hadoop.hbase.AuthUtil;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.security.Superusers;
-import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -553,47 +552,45 @@ public class ZKWatcher implements Watcher, Abortable, Closeable {
   }
 
   private void processEvent(WatchedEvent event) {
-    TraceUtil.trace(() -> {
-      switch (event.getType()) {
-        // If event type is NONE, this is a connection status change
-        case None: {
-          connectionEvent(event);
-          break;
-        }
-
-        // Otherwise pass along to the listeners
-        case NodeCreated: {
-          for (ZKListener listener : listeners) {
-            listener.nodeCreated(event.getPath());
-          }
-          break;
-        }
-
-        case NodeDeleted: {
-          for (ZKListener listener : listeners) {
-            listener.nodeDeleted(event.getPath());
-          }
-          break;
-        }
-
-        case NodeDataChanged: {
-          for (ZKListener listener : listeners) {
-            listener.nodeDataChanged(event.getPath());
-          }
-          break;
-        }
-
-        case NodeChildrenChanged: {
-          for (ZKListener listener : listeners) {
-            listener.nodeChildrenChanged(event.getPath());
-          }
-          break;
-        }
-        default:
-          LOG.error("Invalid event of type {} received for path {}. Ignoring.", event.getState(),
-            event.getPath());
+    switch (event.getType()) {
+      // If event type is NONE, this is a connection status change
+      case None: {
+        connectionEvent(event);
+        break;
       }
-    }, "ZKWatcher.processEvent: " + event.getType() + " " + event.getPath());
+
+      // Otherwise pass along to the listeners
+      case NodeCreated: {
+        for (ZKListener listener : listeners) {
+          listener.nodeCreated(event.getPath());
+        }
+        break;
+      }
+
+      case NodeDeleted: {
+        for (ZKListener listener : listeners) {
+          listener.nodeDeleted(event.getPath());
+        }
+        break;
+      }
+
+      case NodeDataChanged: {
+        for (ZKListener listener : listeners) {
+          listener.nodeDataChanged(event.getPath());
+        }
+        break;
+      }
+
+      case NodeChildrenChanged: {
+        for (ZKListener listener : listeners) {
+          listener.nodeChildrenChanged(event.getPath());
+        }
+        break;
+      }
+      default:
+        LOG.error("Invalid event of type {} received for path {}. Ignoring.", event.getState(),
+          event.getPath());
+    }
   }
 
   /**
@@ -605,8 +602,7 @@ public class ZKWatcher implements Watcher, Abortable, Closeable {
   public void process(WatchedEvent event) {
     LOG.debug(prefix("Received ZooKeeper Event, " + "type=" + event.getType() + ", " + "state="
       + event.getState() + ", " + "path=" + event.getPath()));
-    final String spanName = ZKWatcher.class.getSimpleName() + "-" + identifier;
-    zkEventProcessor.submit(TraceUtil.tracedRunnable(() -> processEvent(event), spanName));
+    zkEventProcessor.submit(() -> processEvent(event));
   }
 
   // Connection management

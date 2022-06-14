@@ -27,7 +27,6 @@ import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
-import org.apache.hadoop.hbase.trace.TraceUtil;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
@@ -72,13 +71,11 @@ public class MasterAddressTracker extends ZKNodeTracker {
   }
 
   private void loadBackupMasters() {
-    TraceUtil.trace(() -> {
-      try {
-        backupMasters = Collections.unmodifiableList(getBackupMastersAndRenewWatch(watcher));
-      } catch (InterruptedIOException e) {
-        abortable.abort("Unexpected exception handling nodeChildrenChanged event", e);
-      }
-    }, "MasterAddressTracker.loadBackupMasters");
+    try {
+      backupMasters = Collections.unmodifiableList(getBackupMastersAndRenewWatch(watcher));
+    } catch (InterruptedIOException e) {
+      abortable.abort("Unexpected exception handling nodeChildrenChanged event", e);
+    }
   }
 
   @Override
