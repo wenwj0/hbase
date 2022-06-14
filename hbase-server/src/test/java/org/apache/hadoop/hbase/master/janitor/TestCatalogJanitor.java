@@ -327,7 +327,7 @@ public class TestCatalogJanitor {
     final Map<RegionInfo, Result> mergedRegions = new TreeMap<>();
     CatalogJanitor spy = spy(this.janitor);
 
-    CatalogJanitorReport report = new CatalogJanitorReport();
+    Report report = new Report();
     report.count = 10;
     report.mergedRegions.putAll(mergedRegions);
     report.splitParents.putAll(splitParents);

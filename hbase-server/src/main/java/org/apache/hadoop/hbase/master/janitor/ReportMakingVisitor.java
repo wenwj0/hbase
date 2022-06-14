@@ -54,7 +54,7 @@ class ReportMakingVisitor implements ClientMetaTableAccessor.CloseableVisitor {
   /**
    * Report is not done until after the close has been called.
    */
-  private CatalogJanitorReport report = new CatalogJanitorReport();
+  private Report report = new Report();
 
   /**
    * RegionInfo from previous row.
@@ -77,7 +77,7 @@ class ReportMakingVisitor implements ClientMetaTableAccessor.CloseableVisitor {
   /**
    * Do not call until after {@link #close()}. Will throw a {@link RuntimeException} if you do.
    */
-  CatalogJanitorReport getReport() {
+  Report getReport() {
     if (!this.closed) {
       throw new RuntimeException("Report not ready until after close()");
     }

@@ -15,16 +15,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.master.hbck;
+package org.apache.hadoop.hbase.master;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.CatalogFamilyFormat;
@@ -33,8 +33,6 @@ import org.apache.hadoop.hbase.ScheduledChore;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.TableState;
-import org.apache.hadoop.hbase.master.MasterServices;
-import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.HbckRegionInfo;
@@ -58,14 +56,51 @@ public class HbckChore extends ScheduledChore {
   private final MasterServices master;
 
   /**
-   * Saved report from last time this chore ran. Check its date.
+   * This map contains the state of all hbck items. It maps from encoded region name to
+   * HbckRegionInfo structure. The information contained in HbckRegionInfo is used to detect and
+   * correct consistency (hdfs/meta/deployment) problems.
    */
-  private volatile HbckReport lastReport = null;
+  private final Map<String, HbckRegionInfo> regionInfoMap = new HashMap<>();
+
+  private final Set<String> disabledTableRegions = new HashSet<>();
+  private final Set<String> splitParentRegions = new HashSet<>();
+
+  /**
+   * The regions only opened on RegionServers, but no region info in meta.
+   */
+  private final Map<String, ServerName> orphanRegionsOnRS = new HashMap<>();
+  /**
+   * The regions have directory on FileSystem, but no region info in meta.
+   */
+  private final Map<String, Path> orphanRegionsOnFS = new HashMap<>();
+  /**
+   * The inconsistent regions. There are three case: case 1. Master thought this region opened, but
+   * no regionserver reported it. case 2. Master thought this region opened on Server1, but
+   * regionserver reported Server2 case 3. More than one regionservers reported opened this region
+   */
+  private final Map<String, Pair<ServerName, List<ServerName>>> inconsistentRegions =
+    new HashMap<>();
+
+  /**
+   * The "snapshot" is used to save the last round's HBCK checking report.
+   */
+  private final Map<String, ServerName> orphanRegionsOnRSSnapshot = new HashMap<>();
+  private final Map<String, Path> orphanRegionsOnFSSnapshot = new HashMap<>();
+  private final Map<String, Pair<ServerName, List<ServerName>>> inconsistentRegionsSnapshot =
+    new HashMap<>();
+
+  /**
+   * The "snapshot" may be changed after checking. And this checking report "snapshot" may be
+   * accessed by web ui. Use this rwLock to synchronize.
+   */
+  ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 
   /**
    * When running, the "snapshot" may be changed when this round's checking finish.
    */
   private volatile boolean running = false;
+  private volatile long checkingStartTimestamp = 0;
+  private volatile long checkingEndTimestamp = 0;
 
   private boolean disabled = false;
 
@@ -81,47 +116,39 @@ public class HbckChore extends ScheduledChore {
     }
   }
 
-  /**
-   * @return Returns last published Report that comes of last successful execution of this chore.
-   */
-  public HbckReport getLastReport() {
-    return lastReport;
-  }
-
   @Override
   protected synchronized void chore() {
     if (isDisabled() || isRunning()) {
       LOG.warn("hbckChore is either disabled or is already running. Can't run the chore");
       return;
     }
+    regionInfoMap.clear();
+    disabledTableRegions.clear();
+    splitParentRegions.clear();
+    orphanRegionsOnRS.clear();
+    orphanRegionsOnFS.clear();
+    inconsistentRegions.clear();
+    checkingStartTimestamp = EnvironmentEdgeManager.currentTime();
     running = true;
-    final HbckReport report = new HbckReport();
-    report.setCheckingStartTimestamp(Instant.ofEpochMilli(EnvironmentEdgeManager.currentTime()));
     try {
-      loadRegionsFromInMemoryState(report);
-      loadRegionsFromRSReport(report);
+      loadRegionsFromInMemoryState();
+      loadRegionsFromRSReport();
       try {
-        loadRegionsFromFS(scanForMergedParentRegions(), report);
+        loadRegionsFromFS(scanForMergedParentRegions());
       } catch (IOException e) {
         LOG.warn("Failed to load the regions from filesystem", e);
       }
+      saveCheckResultToSnapshot();
     } catch (Throwable t) {
       LOG.warn("Unexpected", t);
     }
-    report.setCheckingEndTimestamp(Instant.ofEpochMilli(EnvironmentEdgeManager.currentTime()));
-    this.lastReport = report;
     running = false;
-    updateAssignmentManagerMetrics(report);
+    updateAssignmentManagerMetrics();
   }
 
-  /**
-   * Request execution of this chore's action.
-   * @return {@code true} if the chore was executed, {@code false} if the chore is disabled or
-   *         already running.
-   */
-  public boolean runChore() {
-    // This function does the sanity checks of making sure the chore is not run when it is
-    // disabled or when it's already running. It returns whether the chore was actually run or not.
+  // This function does the sanity checks of making sure the chore is not run when it is
+  // disabled or when it's already running. It returns whether the chore was actually run or not.
+  protected boolean runChore() {
     if (isDisabled() || isRunning()) {
       if (isDisabled()) {
         LOG.warn("hbck chore is disabled! Set " + HBCK_CHORE_INTERVAL + " > 0 to enable it.");
@@ -140,6 +167,25 @@ public class HbckChore extends ScheduledChore {
 
   public boolean isDisabled() {
     return this.disabled;
+  }
+
+  private void saveCheckResultToSnapshot() {
+    // Need synchronized here, as this "snapshot" may be access by web ui.
+    rwLock.writeLock().lock();
+    try {
+      orphanRegionsOnRSSnapshot.clear();
+      orphanRegionsOnRS.entrySet()
+        .forEach(e -> orphanRegionsOnRSSnapshot.put(e.getKey(), e.getValue()));
+      orphanRegionsOnFSSnapshot.clear();
+      orphanRegionsOnFS.entrySet()
+        .forEach(e -> orphanRegionsOnFSSnapshot.put(e.getKey(), e.getValue()));
+      inconsistentRegionsSnapshot.clear();
+      inconsistentRegions.entrySet()
+        .forEach(e -> inconsistentRegionsSnapshot.put(e.getKey(), e.getValue()));
+      checkingEndTimestamp = EnvironmentEdgeManager.currentTime();
+    } finally {
+      rwLock.writeLock().unlock();
+    }
   }
 
   /**
@@ -164,7 +210,7 @@ public class HbckChore extends ScheduledChore {
     return mergedParentRegions;
   }
 
-  private void loadRegionsFromInMemoryState(final HbckReport report) {
+  private void loadRegionsFromInMemoryState() {
     List<RegionState> regionStates =
       master.getAssignmentManager().getRegionStates().getRegionStates();
     for (RegionState regionState : regionStates) {
@@ -172,19 +218,18 @@ public class HbckChore extends ScheduledChore {
       if (
         master.getTableStateManager().isTableState(regionInfo.getTable(), TableState.State.DISABLED)
       ) {
-        report.getDisabledTableRegions().add(regionInfo.getRegionNameAsString());
+        disabledTableRegions.add(regionInfo.getRegionNameAsString());
       }
       // Check both state and regioninfo for split status, see HBASE-26383
       if (regionState.isSplit() || regionInfo.isSplit()) {
-        report.getSplitParentRegions().add(regionInfo.getRegionNameAsString());
+        splitParentRegions.add(regionInfo.getRegionNameAsString());
       }
       HbckRegionInfo.MetaEntry metaEntry = new HbckRegionInfo.MetaEntry(regionInfo,
         regionState.getServerName(), regionState.getStamp());
-      report.getRegionInfoMap().put(regionInfo.getEncodedName(), new HbckRegionInfo(metaEntry));
+      regionInfoMap.put(regionInfo.getEncodedName(), new HbckRegionInfo(metaEntry));
     }
     LOG.info("Loaded {} regions ({} disabled, {} split parents) from in-memory state",
-      regionStates.size(), report.getDisabledTableRegions().size(),
-      report.getSplitParentRegions().size());
+      regionStates.size(), disabledTableRegions.size(), splitParentRegions.size());
     if (LOG.isDebugEnabled()) {
       Map<RegionState.State, Integer> stateCountMap = new HashMap<>();
       for (RegionState regionState : regionStates) {
@@ -202,23 +247,22 @@ public class HbckChore extends ScheduledChore {
     }
     if (LOG.isTraceEnabled()) {
       for (RegionState regionState : regionStates) {
-        LOG.trace("{}: {}, serverName={}", regionState.getRegion(), regionState.getState(),
+        LOG.trace("{}: {}, serverName=", regionState.getRegion(), regionState.getState(),
           regionState.getServerName());
       }
     }
   }
 
-  private void loadRegionsFromRSReport(final HbckReport report) {
+  private void loadRegionsFromRSReport() {
     int numRegions = 0;
     Map<ServerName, Set<byte[]>> rsReports = master.getAssignmentManager().getRSReports();
     for (Map.Entry<ServerName, Set<byte[]>> entry : rsReports.entrySet()) {
       ServerName serverName = entry.getKey();
       for (byte[] regionName : entry.getValue()) {
         String encodedRegionName = RegionInfo.encodeRegionName(regionName);
-        HbckRegionInfo hri = report.getRegionInfoMap().get(encodedRegionName);
+        HbckRegionInfo hri = regionInfoMap.get(encodedRegionName);
         if (hri == null) {
-          report.getOrphanRegionsOnRS().put(RegionInfo.getRegionNameAsString(regionName),
-            serverName);
+          orphanRegionsOnRS.put(RegionInfo.getRegionNameAsString(regionName), serverName);
           continue;
         }
         hri.addServer(hri.getMetaEntry().getRegionInfo(), serverName);
@@ -226,9 +270,9 @@ public class HbckChore extends ScheduledChore {
       numRegions += entry.getValue().size();
     }
     LOG.info("Loaded {} regions from {} regionservers' reports and found {} orphan regions",
-      numRegions, rsReports.size(), report.getOrphanRegionsOnRS().size());
+      numRegions, rsReports.size(), orphanRegionsOnRS.size());
 
-    for (Map.Entry<String, HbckRegionInfo> entry : report.getRegionInfoMap().entrySet()) {
+    for (Map.Entry<String, HbckRegionInfo> entry : regionInfoMap.entrySet()) {
       HbckRegionInfo hri = entry.getValue();
       ServerName locationInMeta = hri.getMetaEntry().getRegionServer();
       if (locationInMeta == null) {
@@ -236,30 +280,29 @@ public class HbckChore extends ScheduledChore {
       }
       if (hri.getDeployedOn().size() == 0) {
         // skip the offline region which belong to disabled table.
-        if (report.getDisabledTableRegions().contains(hri.getRegionNameAsString())) {
+        if (disabledTableRegions.contains(hri.getRegionNameAsString())) {
           continue;
         }
         // skip the split parent regions
-        if (report.getSplitParentRegions().contains(hri.getRegionNameAsString())) {
+        if (splitParentRegions.contains(hri.getRegionNameAsString())) {
           continue;
         }
         // Master thought this region opened, but no regionserver reported it.
-        report.getInconsistentRegions().put(hri.getRegionNameAsString(),
+        inconsistentRegions.put(hri.getRegionNameAsString(),
           new Pair<>(locationInMeta, new LinkedList<>()));
       } else if (hri.getDeployedOn().size() > 1) {
         // More than one regionserver reported opened this region
-        report.getInconsistentRegions().put(hri.getRegionNameAsString(),
+        inconsistentRegions.put(hri.getRegionNameAsString(),
           new Pair<>(locationInMeta, hri.getDeployedOn()));
       } else if (!hri.getDeployedOn().get(0).equals(locationInMeta)) {
         // Master thought this region opened on Server1, but regionserver reported Server2
-        report.getInconsistentRegions().put(hri.getRegionNameAsString(),
+        inconsistentRegions.put(hri.getRegionNameAsString(),
           new Pair<>(locationInMeta, hri.getDeployedOn()));
       }
     }
   }
 
-  private void loadRegionsFromFS(final HashSet<String> mergedParentRegions, final HbckReport report)
-    throws IOException {
+  private void loadRegionsFromFS(final HashSet<String> mergedParentRegions) throws IOException {
     Path rootDir = master.getMasterFileSystem().getRootDir();
     FileSystem fs = master.getMasterFileSystem().getFileSystem();
 
@@ -273,27 +316,27 @@ public class HbckChore extends ScheduledChore {
           LOG.warn("Failed get of encoded name from {}", regionDir);
           continue;
         }
-        HbckRegionInfo hri = report.getRegionInfoMap().get(encodedRegionName);
+        HbckRegionInfo hri = regionInfoMap.get(encodedRegionName);
         // If it is not in in-memory database and not a merged region,
         // report it as an orphan region.
         if (hri == null && !mergedParentRegions.contains(encodedRegionName)) {
-          report.getOrphanRegionsOnFS().put(encodedRegionName, regionDir);
+          orphanRegionsOnFS.put(encodedRegionName, regionDir);
           continue;
         }
       }
       numRegions += regionDirs.size();
     }
     LOG.info("Loaded {} tables {} regions from filesystem and found {} orphan regions",
-      tableDirs.size(), numRegions, report.getOrphanRegionsOnFS().size());
+      tableDirs.size(), numRegions, orphanRegionsOnFS.size());
   }
 
-  private void updateAssignmentManagerMetrics(final HbckReport report) {
+  private void updateAssignmentManagerMetrics() {
     master.getAssignmentManager().getAssignmentManagerMetrics()
-      .updateOrphanRegionsOnRs(report.getOrphanRegionsOnRS().size());
+      .updateOrphanRegionsOnRs(getOrphanRegionsOnRS().size());
     master.getAssignmentManager().getAssignmentManagerMetrics()
-      .updateOrphanRegionsOnFs(report.getOrphanRegionsOnFS().size());
+      .updateOrphanRegionsOnFs(getOrphanRegionsOnFS().size());
     master.getAssignmentManager().getAssignmentManagerMetrics()
-      .updateInconsistentRegions(report.getInconsistentRegions().size());
+      .updateInconsistentRegions(getInconsistentRegions().size());
   }
 
   /**
@@ -301,5 +344,63 @@ public class HbckChore extends ScheduledChore {
    */
   public boolean isRunning() {
     return running;
+  }
+
+  /**
+   * @return the regions only opened on RegionServers, but no region info in meta.
+   */
+  public Map<String, ServerName> getOrphanRegionsOnRS() {
+    // Need synchronized here, as this "snapshot" may be changed after checking.
+    rwLock.readLock().lock();
+    try {
+      return this.orphanRegionsOnRSSnapshot;
+    } finally {
+      rwLock.readLock().unlock();
+    }
+  }
+
+  /**
+   * @return the regions have directory on FileSystem, but no region info in meta.
+   */
+  public Map<String, Path> getOrphanRegionsOnFS() {
+    // Need synchronized here, as this "snapshot" may be changed after checking.
+    rwLock.readLock().lock();
+    try {
+      return this.orphanRegionsOnFSSnapshot;
+    } finally {
+      rwLock.readLock().unlock();
+    }
+  }
+
+  /**
+   * Found the inconsistent regions. There are three case: case 1. Master thought this region
+   * opened, but no regionserver reported it. case 2. Master thought this region opened on Server1,
+   * but regionserver reported Server2 case 3. More than one regionservers reported opened this
+   * region
+   * @return the map of inconsistent regions. Key is the region name. Value is a pair of location in
+   *         meta and the regionservers which reported opened this region.
+   */
+  public Map<String, Pair<ServerName, List<ServerName>>> getInconsistentRegions() {
+    // Need synchronized here, as this "snapshot" may be changed after checking.
+    rwLock.readLock().lock();
+    try {
+      return this.inconsistentRegionsSnapshot;
+    } finally {
+      rwLock.readLock().unlock();
+    }
+  }
+
+  /**
+   * Used for web ui to show when the HBCK checking started.
+   */
+  public long getCheckingStartTimestamp() {
+    return this.checkingStartTimestamp;
+  }
+
+  /**
+   * Used for web ui to show when the HBCK checking report generated.
+   */
+  public long getCheckingEndTimestamp() {
+    return this.checkingEndTimestamp;
   }
 }
