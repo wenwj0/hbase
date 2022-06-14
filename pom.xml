@@ -1785,7 +1785,6 @@
           <configuration>
             <groups>${surefire.firstPartGroups}</groups>
             <failIfNoTests>false</failIfNoTests>
-            <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
             <trimStackTrace>false</trimStackTrace>
             <skip>${surefire.skipFirstPart}</skip>
             <forkCount>${surefire.firstPartForkCount}</forkCount>
