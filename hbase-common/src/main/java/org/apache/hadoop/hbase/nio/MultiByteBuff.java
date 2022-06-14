@@ -1148,9 +1148,6 @@ public class MultiByteBuff extends ByteBuff {
         offset += len;
       }
       if (buffer.hasRemaining()) {
-        // reset
-        curItem = buffer;
-        curItemIndex = (curItemIndex - 1);
         break;
       }
     }
