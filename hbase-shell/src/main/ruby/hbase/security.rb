@@ -182,7 +182,7 @@ module Hbase
     end
 
     def isTablePermission?(permission)
-      permission.kind_of?(org.apache.hadoop.hbase.security.access.TablePermission)
+      permission.java_kind_of?(org.apache.hadoop.hbase.security.access.TablePermission)
     end
 
     # Does Namespace exist
