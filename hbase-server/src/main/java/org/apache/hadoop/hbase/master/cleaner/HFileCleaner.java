@@ -88,17 +88,6 @@ public class HFileCleaner extends CleanerChore<BaseHFileCleanerDelegate>
     "hbase.regionserver.hfilecleaner.thread.check.interval.msec";
   static final long DEFAULT_HFILE_DELETE_THREAD_CHECK_INTERVAL_MSEC = 1000L;
 
-  /**
-   * The custom paths for hfile cleaner, subdirectories of archive, e.g.
-   * data/default/testTable1,data/default/testTable2
-   */
-  public static final String HFILE_CLEANER_CUSTOM_PATHS = "hbase.master.hfile.cleaner.custom.paths";
-
-  /** Configure hfile cleaner classes for the custom paths */
-  public static final String HFILE_CLEANER_CUSTOM_PATHS_PLUGINS =
-    "hbase.master.hfilecleaner.custom.paths.plugins";
-  public static final String CUSTOM_POOL_SIZE = "hbase.cleaner.custom.hfiles.pool.size";
-
   private static final Logger LOG = LoggerFactory.getLogger(HFileCleaner.class);
 
   StealJobQueue<HFileDeleteTask> largeFileQueue;
@@ -128,13 +117,8 @@ public class HFileCleaner extends CleanerChore<BaseHFileCleanerDelegate>
   public HFileCleaner(final int period, final Stoppable stopper, Configuration conf, FileSystem fs,
     Path directory, DirScanPool pool, Map<String, Object> params) {
     this("HFileCleaner", period, stopper, conf, fs, directory, MASTER_HFILE_CLEANER_PLUGINS, pool,
-      params, null);
-  }
+      params);
 
-  public HFileCleaner(final int period, final Stoppable stopper, Configuration conf, FileSystem fs,
-    Path directory, DirScanPool pool, Map<String, Object> params, List<Path> excludePaths) {
-    this("HFileCleaner", period, stopper, conf, fs, directory, MASTER_HFILE_CLEANER_PLUGINS, pool,
-      params, excludePaths);
   }
 
   /**
@@ -150,9 +134,8 @@ public class HFileCleaner extends CleanerChore<BaseHFileCleanerDelegate>
    * @param params    params could be used in subclass of BaseHFileCleanerDelegate
    */
   public HFileCleaner(String name, int period, Stoppable stopper, Configuration conf, FileSystem fs,
-    Path directory, String confKey, DirScanPool pool, Map<String, Object> params,
-    List<Path> excludePaths) {
-    super(name, period, stopper, conf, fs, directory, confKey, pool, params, excludePaths);
+    Path directory, String confKey, DirScanPool pool, Map<String, Object> params) {
+    super(name, period, stopper, conf, fs, directory, confKey, pool, params);
     throttlePoint =
       conf.getInt(HFILE_DELETE_THROTTLE_THRESHOLD, DEFAULT_HFILE_DELETE_THROTTLE_THRESHOLD);
     largeQueueInitSize =
