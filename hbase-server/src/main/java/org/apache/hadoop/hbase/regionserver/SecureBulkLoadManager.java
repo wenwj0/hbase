@@ -398,7 +398,10 @@ public class SecureBulkLoadManager {
           throw new IOException("Failed to move HFile: " + p + " to " + stageP);
         }
       }
-      fs.setPermission(stageP, PERM_ALL_ACCESS);
+
+      if (StringUtils.isNotEmpty(customStaging)) {
+        fs.setPermission(stageP, PERM_ALL_ACCESS);
+      }
 
       return stageP.toString();
     }
