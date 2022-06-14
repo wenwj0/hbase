@@ -446,7 +446,6 @@ Shell.load_command_group(
     compact
     compaction_switch
     flush
-    flush_master_store
     get_balancer_decisions
     get_balancer_rejections
     get_slowlog_responses

@@ -510,9 +510,4 @@ public interface MasterServices extends Server {
    * We need to get this in MTP to tell the syncer the new meta replica count.
    */
   MetaLocationSyncer getMetaLocationSyncer();
-
-  /**
-   * Flush master local region
-   */
-  void flushMasterStore() throws IOException;
 }

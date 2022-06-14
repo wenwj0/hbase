@@ -504,10 +504,6 @@ public class MockNoopMasterServices implements MasterServices {
   }
 
   @Override
-  public void flushMasterStore() {
-  }
-
-  @Override
   public long modifyTableStoreFileTracker(TableName tableName, String dstSFT, long nonceGroup,
     long nonce) throws IOException {
     return -1;

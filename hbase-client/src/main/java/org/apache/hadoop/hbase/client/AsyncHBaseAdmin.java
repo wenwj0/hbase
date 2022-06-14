@@ -949,9 +949,4 @@ class AsyncHBaseAdmin implements AsyncAdmin {
     String logType, ServerType serverType, int limit, Map<String, Object> filterParams) {
     return wrap(rawAdmin.getLogEntries(serverNames, logType, serverType, limit, filterParams));
   }
-
-  @Override
-  public CompletableFuture<Void> flushMasterStore() {
-    return wrap(rawAdmin.flushMasterStore());
-  }
 }

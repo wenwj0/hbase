@@ -148,5 +148,6 @@ public class TestMasterRegionFlush {
     assertEquals(1, flushCalled.get());
     Thread.sleep(1000);
     assertEquals(2, flushCalled.get());
+
   }
 }
