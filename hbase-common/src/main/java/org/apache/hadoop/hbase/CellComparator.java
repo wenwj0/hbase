@@ -17,7 +17,6 @@
  */
 package org.apache.hadoop.hbase;
 
-import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Comparator;
 import org.apache.hadoop.hbase.util.ByteBufferUtils;
@@ -31,7 +30,7 @@ import org.apache.yetus.audience.InterfaceStability;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public interface CellComparator extends Comparator<Cell>, Serializable {
+public interface CellComparator extends Comparator<Cell> {
   /**
    * A comparator for ordering cells in user-space tables. Useful when writing cells in sorted order
    * as necessary for bulk import (i.e. via MapReduce).
