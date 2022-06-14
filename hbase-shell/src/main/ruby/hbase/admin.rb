@@ -1043,7 +1043,6 @@ module Hbase
       else
         puts "1 active master, #{cluster_metrics.getBackupMasterNames.size} backup masters,
               #{cluster_metrics.getLiveServerMetrics.size} servers,
-              #{cluster_metrics.getDecommissionedServerNames.size} decommissioned,
               #{cluster_metrics.getDeadServerNames.size} dead,
               #{format('%.4f', cluster_metrics.getAverageLoad)} average load"
       end

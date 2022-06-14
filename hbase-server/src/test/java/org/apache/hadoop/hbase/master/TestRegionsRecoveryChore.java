@@ -228,11 +228,6 @@ public class TestRegionsRecoveryChore {
       }
 
       @Override
-      public List<ServerName> getDecommissionedServerNames() {
-        return null;
-      }
-
-      @Override
       public Map<ServerName, ServerMetrics> getLiveServerMetrics() {
         Map<ServerName, ServerMetrics> liveServerMetrics = new HashMap<>();
         for (int i = 0; i < noOfLiveServer; i++) {

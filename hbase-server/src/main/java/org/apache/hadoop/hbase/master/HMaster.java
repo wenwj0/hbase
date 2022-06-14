@@ -2903,12 +2903,6 @@ public class HMaster extends HBaseServerBase<MasterRpcServices> implements Maste
           }
           break;
         }
-        case DECOMMISSIONED_SERVERS: {
-          if (serverManager != null) {
-            builder.setDecommissionedServerNames(serverManager.getDrainingServersList());
-          }
-          break;
-        }
       }
     }
 
