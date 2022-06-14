@@ -3456,6 +3456,14 @@
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-reload4j</artifactId>
               </exclusion>
+              <exclusion>
+                <groupId>org.fusesource.leveldbjni</groupId>
+                <artifactId>leveldbjni-all</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>org.openlabtesting.leveldbjni</groupId>
+                <artifactId>leveldbjni-all</artifactId>
+              </exclusion>
             </exclusions>
           </dependency>
           <dependency>
@@ -3652,6 +3660,14 @@
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-reload4j</artifactId>
               </exclusion>
+              <exclusion>
+                <groupId>org.fusesource.leveldbjni</groupId>
+                <artifactId>leveldbjni-all</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>org.openlabtesting.leveldbjni</groupId>
+                <artifactId>leveldbjni-all</artifactId>
+              </exclusion>
             </exclusions>
           </dependency>
           <dependency>
@@ -3681,6 +3697,14 @@
               <exclusion>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-reload4j</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>org.fusesource.leveldbjni</groupId>
+                <artifactId>leveldbjni-all</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>org.openlabtesting.leveldbjni</groupId>
+                <artifactId>leveldbjni-all</artifactId>
               </exclusion>
             </exclusions>
           </dependency>
@@ -3924,6 +3948,14 @@
               <exclusion>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-reload4j</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>org.fusesource.leveldbjni</groupId>
+                <artifactId>leveldbjni-all</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>org.openlabtesting.leveldbjni</groupId>
+                <artifactId>leveldbjni-all</artifactId>
               </exclusion>
             </exclusions>
           </dependency>
